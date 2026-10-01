@@ -3,7 +3,8 @@ import pandas as pd
 import io
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import dataframe_to_rows
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.utils import get_column_letter
 
 st.set_page_config(page_title="Buscador Hikvision Pro", layout="wide", page_icon="🔍")
 
@@ -102,7 +103,6 @@ if solo_stock:
 st.sidebar.markdown("---")
 st.sidebar.header("🛠️ Características Técnicas")
 
-# Lista expandida con palabras frecuentes en descripciones Hikvision
 tecnologias_frecuentes = {
     "Resolución / Calidad": ["1080P", "2MP", "4MP", "5MP", "8MP", "4K", "HD"],
     "Funciones / IA": ["AcuSense", "ColorVu", "DarkFighter", "WDR", "Microphone", "Audio", "Built-in MIC", "Deep learning", "Human/Vehicle classification", "Face Recognition", "GPS", "Wi-Fi", "4G", "PoE", "BSD", "ADAS"],
@@ -110,7 +110,6 @@ tecnologias_frecuentes = {
     "Compresión / Visión": ["H.265+", "H.264", "EXIR", "Hybrid light", "Smart Light", "Dual Light"]
 }
 
-# Categorías desplegables de características
 for cat_tech, tags in tecnologias_frecuentes.items():
     seleccionados = st.sidebar.multiselect(f"{cat_tech}:", tags)
     for kw in seleccionados:
@@ -119,7 +118,6 @@ for cat_tech, tags in tecnologias_frecuentes.items():
             df_filtered['Modelo'].astype(str).str.contains(kw, case=False, na=False)
         ]
 
-# Búsqueda libre por texto
 busqueda_libre = st.sidebar.text_input("O escribe una palabra clave específica:")
 if busqueda_libre:
     mask = (
@@ -132,10 +130,7 @@ if busqueda_libre:
 # --- VISTA PRINCIPAL ---
 st.metric("Productos encontrados", len(df_filtered))
 
-# Columnas de Precios solicitadas
 precios_cols = ['Diamond', 'Black', 'Ruby', 'Platinum', 'Gold Gremio', 'Gold Plus', 'Gold Prime', 'MAP ARS', 'MAP Web']
-
-# Columnas finales para presentar en pantalla
 cols_a_mostrar = ['SAP', 'Modelo', 'Marca', 'Tipo de Producto', 'Cat. madre', 'Line Focus', 'Segmento', 'Status', 'Stock'] + precios_cols + ['Descripción']
 cols_existentes = [c for c in cols_a_mostrar if c in df_filtered.columns]
 
@@ -152,8 +147,7 @@ def generar_excel_estetico(dataframe):
     ws.title = "Lista de Precios Hikvision"
     ws.views.sheetView[0].showGridLines = True
 
-    # Estilos
-    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid") # Azul corporativo
+    header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
     data_font = Font(name="Calibri", size=10)
     border_thin = Border(
@@ -163,27 +157,23 @@ def generar_excel_estetico(dataframe):
         bottom=Side(style='thin', color='D9D9D9')
     )
 
-    # Insertar filas
     for r in dataframe_to_rows(dataframe[cols_existentes], index=False, header=True):
         ws.append(r)
 
-    # Aplicar formato a encabezados
     for cell in ws[1]:
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
-    # Aplicar formato a datos y ajustar ancho
     for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
         for cell in row:
             cell.font = data_font
             cell.border = border_thin
             cell.alignment = Alignment(vertical="center")
 
-    # Autoajuste de ancho de columnas
     for col in ws.columns:
         max_len = max(len(str(cell.value or '')) for cell in col)
-        col_letter = openpyxl.utils.get_column_letter(col[0].column)
+        col_letter = get_column_letter(col[0].column)
         ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 50)
 
     output = io.BytesIO()
