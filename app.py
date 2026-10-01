@@ -8,51 +8,52 @@ from openpyxl.utils import get_column_letter
 
 st.set_page_config(page_title="Buscador Hikvision Pro", layout="wide", page_icon="🔍")
 
-# Carga y preparación de datos
+# Nombre del archivo Excel oficial
+EXCEL_FILE = 'Hikvision_Pricelist_DIAMOND_2026-10-01.xlsx'
+
+# Carga y preparación de datos desde Excel
 @st.cache_data
 def load_data():
-    df = pd.read_csv('Lista Hikvision.txt', sep='\t')
-    df['Stock'] = pd.to_numeric(df['Stock'], errors='coerce').fillna(0)
+    # Lee directamente la primera hoja del archivo Excel
+    df = pd.read_excel(EXCEL_FILE)
     
+    # Limpieza de nombres de columnas (quita espacios extra al inicio o final)
+    df.columns = df.columns.str.strip()
+    
+    # Asegurar que Stock sea numérico
+    if 'Stock' in df.columns:
+        df['Stock'] = pd.to_numeric(df['Stock'], errors='coerce').fillna(0)
+    else:
+        df['Stock'] = 0
+
     # Clasificación precisa por Macro Tipo de Producto
     def clasificar_tipo(row):
-        cat = str(row['Cat. madre']).upper()
-        line = str(row['Line Focus']).upper()
-        mod = str(row['Modelo']).upper()
+        cat = str(row.get('Cat. madre', '')).upper()
+        line = str(row.get('Line Focus', '')).upper()
+        mod = str(row.get('Modelo', '')).upper()
         
-        # 1. Networking y Switches
         if 'SWITCH' in line or 'NETWORKING' in cat or 'ROUTER' in line:
             return 'Switches / Networking'
-        # 2. Grabadores NVR
         elif 'NVR' in line or 'NVR' in mod or 'NVR' in cat:
             return 'NVR'
-        # 3. Grabadores DVR / XVR
         elif 'DVR' in line or 'DVR' in mod or ('BACK-END' in cat and ('DVR' in mod or 'XVR' in mod)):
             return 'DVR / XVR'
-        # 4. Cámaras PTZ
         elif 'PTZ' in line or 'PTZ' in mod:
             return 'Cámaras PTZ'
-        # 5. Cámaras Análogas (Turbo HD)
         elif 'TURBO HD' in line or mod.startswith('DS-2CE') or mod.startswith('THC') or 'TURBO' in mod:
             return 'Cámaras Análogas (Turbo HD)'
-        # 6. Cámaras IP
         elif 'P-FRONT-END' in cat or 'D-FRONT-END' in cat or 'IPC' in line or 'CAMERA' in line or 'CAM' in line or mod.startswith('DS-2CD') or mod.startswith('HCI'):
             return 'Cámaras IP'
-        # 7. Control de Acceso y Videoporteros
         elif 'ACCESS CONTROL' in cat:
             return 'Control de Acceso'
         elif 'INTERCOM' in cat or 'INTERCOM' in line:
             return 'Videoporteros / Intercom'
-        # 8. Alarmas
         elif 'ALARM' in cat:
             return 'Alarmas'
-        # 9. Térmicas
         elif 'HIKMICRO' in cat or 'THERMAL' in line:
             return 'Térmicas / Hikmicro'
-        # 10. Accesorios
         elif 'ACCESSORY' in line or 'HOUSING' in line or 'BRAKET' in line or 'BRACKET' in line:
             return 'Accesorios y Montajes'
-        # 11. Monitores / Pantallas
         elif 'DISPLAY' in cat or 'LED' in cat or 'MONITOR' in line:
             return 'Monitores / Pantallas / LED'
         else:
@@ -64,7 +65,7 @@ def load_data():
 try:
     df = load_data()
 except Exception as e:
-    st.error("No se pudo cargar el archivo 'Lista Hikvision.txt'. Asegúrate de que esté en la misma carpeta.")
+    st.error(f"No se pudo cargar el archivo '{EXCEL_FILE}'. Asegúrate de haberlo subido al repositorio en GitHub.")
     st.stop()
 
 st.title("🔍 Buscador y Selector Comercial Hikvision")
@@ -75,7 +76,7 @@ st.sidebar.header("🎯 Filtros Generales")
 
 df_curr = df.copy()
 
-# 1. Tipo de Producto (Ahora incluye Cámaras IP y Cámaras Análogas por separado)
+# 1. Tipo de Producto
 tipos_producto = ['Todos'] + sorted(df_curr['Tipo de Producto'].unique().tolist())
 tipo_sel = st.sidebar.selectbox("Tipo de Producto", tipos_producto)
 
@@ -83,28 +84,28 @@ if tipo_sel != 'Todos':
     df_curr = df_curr[df_curr['Tipo de Producto'] == tipo_sel]
 
 # 2. Marca
-marcas = ['Todas'] + sorted(df_curr['Marca'].dropna().unique().tolist())
+marcas = ['Todas'] + sorted(df_curr['Marca'].dropna().unique().tolist()) if 'Marca' in df_curr.columns else ['Todas']
 marca_sel = st.sidebar.selectbox("Marca", marcas)
 
 if marca_sel != 'Todas':
     df_curr = df_curr[df_curr['Marca'] == marca_sel]
 
 # 3. Categoría Madre
-cats = ['Todas'] + sorted(df_curr['Cat. madre'].dropna().unique().tolist())
+cats = ['Todas'] + sorted(df_curr['Cat. madre'].dropna().unique().tolist()) if 'Cat. madre' in df_curr.columns else ['Todas']
 cat_sel = st.sidebar.selectbox("Categoría Madre", cats)
 
 if cat_sel != 'Todas':
     df_curr = df_curr[df_curr['Cat. madre'] == cat_sel]
 
 # 4. Line Focus
-lines = ['Todas'] + sorted(df_curr['Line Focus'].dropna().unique().tolist())
+lines = ['Todas'] + sorted(df_curr['Line Focus'].dropna().unique().tolist()) if 'Line Focus' in df_curr.columns else ['Todas']
 line_sel = st.sidebar.selectbox("Línea (Line Focus)", lines)
 
 if line_sel != 'Todas':
     df_curr = df_curr[df_curr['Line Focus'] == line_sel]
 
 # 5. Segmento
-segmentos = ['Todos'] + sorted(df_curr['Segmento'].dropna().unique().tolist())
+segmentos = ['Todos'] + sorted(df_curr['Segmento'].dropna().unique().tolist()) if 'Segmento' in df_curr.columns else ['Todos']
 seg_sel = st.sidebar.selectbox("Segmento", segmentos)
 
 if seg_sel != 'Todos':
@@ -112,7 +113,7 @@ if seg_sel != 'Todos':
 
 # 6. Filtro de Stock
 solo_stock = st.sidebar.checkbox("Mostrar solo con Stock disponible (>0)")
-if solo_stock:
+if solo_stock and 'Stock' in df_curr.columns:
     df_curr = df_curr[df_curr['Stock'] > 0]
 
 # --- FILTROS POR CARACTERÍSTICAS TÉCNICAS DINÁMICAS ---
@@ -126,31 +127,27 @@ diccionario_tags = {
     "Compresión / Visión": ["H.265+", "H.264", "EXIR", "Hybrid light", "Smart Light", "Dual Light"]
 }
 
-# Verificamos qué palabras existen dentro del filtro actual
-texto_acumulado = (
-    df_curr['Descripción'].astype(str).str.cat(sep=" ") + " " +
-    df_curr['Modelo'].astype(str).str.cat(sep=" ")
-).lower()
+desc_col = df_curr['Descripción'].astype(str) if 'Descripción' in df_curr.columns else pd.Series(['']*len(df_curr))
+mod_col = df_curr['Modelo'].astype(str) if 'Modelo' in df_curr.columns else pd.Series(['']*len(df_curr))
+
+texto_acumulado = (desc_col.str.cat(sep=" ") + " " + mod_col.str.cat(sep=" ")).lower()
 
 for cat_tech, tags in diccionario_tags.items():
     tags_validos = [tag for tag in tags if tag.lower() in texto_acumulado]
     if tags_validos:
         seleccionados = st.sidebar.multiselect(f"{cat_tech}:", tags_validos, key=f"multi_{cat_tech}")
         for kw in seleccionados:
-            df_curr = df_curr[
-                df_curr['Descripción'].astype(str).str.contains(kw, case=False, na=False) |
-                df_curr['Modelo'].astype(str).str.contains(kw, case=False, na=False)
-            ]
+            mask_d = df_curr['Descripción'].astype(str).str.contains(kw, case=False, na=False) if 'Descripción' in df_curr.columns else False
+            mask_m = df_curr['Modelo'].astype(str).str.contains(kw, case=False, na=False) if 'Modelo' in df_curr.columns else False
+            df_curr = df_curr[mask_d | mask_m]
 
 # Búsqueda libre
 busqueda_libre = st.sidebar.text_input("O escribe una palabra clave específica:")
 if busqueda_libre:
-    mask = (
-        df_curr['Modelo'].astype(str).str.contains(busqueda_libre, case=False, na=False) |
-        df_curr['SAP'].astype(str).str.contains(busqueda_libre, case=False, na=False) |
-        df_curr['Descripción'].astype(str).str.contains(busqueda_libre, case=False, na=False)
-    )
-    df_curr = df_curr[mask]
+    mask_m = df_curr['Modelo'].astype(str).str.contains(busqueda_libre, case=False, na=False) if 'Modelo' in df_curr.columns else False
+    mask_s = df_curr['SAP'].astype(str).str.contains(busqueda_libre, case=False, na=False) if 'SAP' in df_curr.columns else False
+    mask_d = df_curr['Descripción'].astype(str).str.contains(busqueda_libre, case=False, na=False) if 'Descripción' in df_curr.columns else False
+    df_curr = df_curr[mask_m | mask_s | mask_d]
 
 # --- VISTA PRINCIPAL ---
 st.metric("Productos encontrados", len(df_curr))
