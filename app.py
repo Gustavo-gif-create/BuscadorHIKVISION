@@ -14,32 +14,45 @@ def load_data():
     df = pd.read_csv('Lista Hikvision.txt', sep='\t')
     df['Stock'] = pd.to_numeric(df['Stock'], errors='coerce').fillna(0)
     
-    # Clasificación por Macro Tipo de Producto
+    # Clasificación precisa por Macro Tipo de Producto
     def clasificar_tipo(row):
         cat = str(row['Cat. madre']).upper()
         line = str(row['Line Focus']).upper()
         mod = str(row['Modelo']).upper()
         
+        # 1. Networking y Switches
         if 'SWITCH' in line or 'NETWORKING' in cat or 'ROUTER' in line:
             return 'Switches / Networking'
+        # 2. Grabadores NVR
         elif 'NVR' in line or 'NVR' in mod or 'NVR' in cat:
             return 'NVR'
-        elif 'DVR' in line or 'DVR' in mod or 'TURBO HD' in line or ('BACK-END' in cat and ('DVR' in mod or 'XVR' in mod)):
+        # 3. Grabadores DVR / XVR
+        elif 'DVR' in line or 'DVR' in mod or ('BACK-END' in cat and ('DVR' in mod or 'XVR' in mod)):
             return 'DVR / XVR'
-        elif 'P-FRONT-END' in cat or 'D-FRONT-END' in cat or 'CAMERA' in line or 'CAM' in line or 'TURBO HD' in line:
-            if 'PTZ' in line or 'PTZ' in mod:
-                return 'Cámaras PTZ'
-            return 'Cámaras (IP / Análogas)'
+        # 4. Cámaras PTZ
+        elif 'PTZ' in line or 'PTZ' in mod:
+            return 'Cámaras PTZ'
+        # 5. Cámaras Análogas (Turbo HD)
+        elif 'TURBO HD' in line or mod.startswith('DS-2CE') or mod.startswith('THC') or 'TURBO' in mod:
+            return 'Cámaras Análogas (Turbo HD)'
+        # 6. Cámaras IP
+        elif 'P-FRONT-END' in cat or 'D-FRONT-END' in cat or 'IPC' in line or 'CAMERA' in line or 'CAM' in line or mod.startswith('DS-2CD') or mod.startswith('HCI'):
+            return 'Cámaras IP'
+        # 7. Control de Acceso y Videoporteros
         elif 'ACCESS CONTROL' in cat:
             return 'Control de Acceso'
         elif 'INTERCOM' in cat or 'INTERCOM' in line:
             return 'Videoporteros / Intercom'
+        # 8. Alarmas
         elif 'ALARM' in cat:
             return 'Alarmas'
+        # 9. Térmicas
         elif 'HIKMICRO' in cat or 'THERMAL' in line:
             return 'Térmicas / Hikmicro'
+        # 10. Accesorios
         elif 'ACCESSORY' in line or 'HOUSING' in line or 'BRAKET' in line or 'BRACKET' in line:
             return 'Accesorios y Montajes'
+        # 11. Monitores / Pantallas
         elif 'DISPLAY' in cat or 'LED' in cat or 'MONITOR' in line:
             return 'Monitores / Pantallas / LED'
         else:
@@ -60,38 +73,37 @@ st.caption(f"Base de datos activa: **{len(df):,}** artículos")
 # --- BARRA LATERAL: FILTROS DINÁMICOS Y CONSECUENTES ---
 st.sidebar.header("🎯 Filtros Generales")
 
-# Iniciamos el subconjunto de datos con todo el DataFrame
 df_curr = df.copy()
 
-# 1. Tipo de Producto
+# 1. Tipo de Producto (Ahora incluye Cámaras IP y Cámaras Análogas por separado)
 tipos_producto = ['Todos'] + sorted(df_curr['Tipo de Producto'].unique().tolist())
 tipo_sel = st.sidebar.selectbox("Tipo de Producto", tipos_producto)
 
 if tipo_sel != 'Todos':
     df_curr = df_curr[df_curr['Tipo de Producto'] == tipo_sel]
 
-# 2. Marca (solo muestra las marcas del Tipo de Producto seleccionado)
+# 2. Marca
 marcas = ['Todas'] + sorted(df_curr['Marca'].dropna().unique().tolist())
 marca_sel = st.sidebar.selectbox("Marca", marcas)
 
 if marca_sel != 'Todas':
     df_curr = df_curr[df_curr['Marca'] == marca_sel]
 
-# 3. Categoría Madre (consecuente con los filtros anteriores)
+# 3. Categoría Madre
 cats = ['Todas'] + sorted(df_curr['Cat. madre'].dropna().unique().tolist())
 cat_sel = st.sidebar.selectbox("Categoría Madre", cats)
 
 if cat_sel != 'Todas':
     df_curr = df_curr[df_curr['Cat. madre'] == cat_sel]
 
-# 4. Line Focus (consecuente)
+# 4. Line Focus
 lines = ['Todas'] + sorted(df_curr['Line Focus'].dropna().unique().tolist())
 line_sel = st.sidebar.selectbox("Línea (Line Focus)", lines)
 
 if line_sel != 'Todas':
     df_curr = df_curr[df_curr['Line Focus'] == line_sel]
 
-# 5. Segmento (consecuente)
+# 5. Segmento
 segmentos = ['Todos'] + sorted(df_curr['Segmento'].dropna().unique().tolist())
 seg_sel = st.sidebar.selectbox("Segmento", segmentos)
 
@@ -103,25 +115,23 @@ solo_stock = st.sidebar.checkbox("Mostrar solo con Stock disponible (>0)")
 if solo_stock:
     df_curr = df_curr[df_curr['Stock'] > 0]
 
-# --- FILTROS POR CARACTERÍSTICAS TÉCNICAS (SOLO MUESTRA TAGS RELEVANTES) ---
+# --- FILTROS POR CARACTERÍSTICAS TÉCNICAS DINÁMICAS ---
 st.sidebar.markdown("---")
 st.sidebar.header("🛠️ Características Técnicas")
 
-# Diccionario maestro de palabras clave
 diccionario_tags = {
-    "Resolución / Calidad": ["1080P", "2MP", "4MP", "5MP", "8MP", "4K", "HD"],
+    "Resolución / Calidad": ["1080P", "2MP", "3K", "4MP", "5MP", "8MP", "4K", "HD"],
     "Funciones / Red / IA": ["PoE", "Gigabit", "SFP", "AcuSense", "ColorVu", "DarkFighter", "WDR", "Microphone", "Audio", "Built-in MIC", "Deep learning", "Human/Vehicle classification", "Face Recognition", "GPS", "Wi-Fi", "4G", "BSD", "ADAS"],
     "Protección / Construcción": ["IP67", "IK10", "Water resistant", "Vandal", "Metal"],
     "Compresión / Visión": ["H.265+", "H.264", "EXIR", "Hybrid light", "Smart Light", "Dual Light"]
 }
 
-# Unimos todo el texto actual para verificar qué palabras realmente existen en este subconjunto
+# Verificamos qué palabras existen dentro del filtro actual
 texto_acumulado = (
     df_curr['Descripción'].astype(str).str.cat(sep=" ") + " " +
     df_curr['Modelo'].astype(str).str.cat(sep=" ")
 ).lower()
 
-# Filtrar cada categoría para conservar SOLO los tags que existen en los productos filtrados
 for cat_tech, tags in diccionario_tags.items():
     tags_validos = [tag for tag in tags if tag.lower() in texto_acumulado]
     if tags_validos:
@@ -132,7 +142,7 @@ for cat_tech, tags in diccionario_tags.items():
                 df_curr['Modelo'].astype(str).str.contains(kw, case=False, na=False)
             ]
 
-# Búsqueda libre por texto
+# Búsqueda libre
 busqueda_libre = st.sidebar.text_input("O escribe una palabra clave específica:")
 if busqueda_libre:
     mask = (
@@ -155,7 +165,7 @@ st.dataframe(
     height=500
 )
 
-# --- GENERAR EXCEL CON DISEÑO PROFESIONAL ---
+# --- GENERAR EXCEL PRESENTACIÓN ---
 def generar_excel_estetico(dataframe):
     wb = openpyxl.Workbook()
     ws = wb.active
