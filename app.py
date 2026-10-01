@@ -57,90 +57,105 @@ except Exception as e:
 st.title("🔍 Buscador y Selector Comercial Hikvision")
 st.caption(f"Base de datos activa: **{len(df):,}** artículos")
 
-# --- BARRA LATERAL: FILTROS ---
+# --- BARRA LATERAL: FILTROS DINÁMICOS Y CONSECUENTES ---
 st.sidebar.header("🎯 Filtros Generales")
 
-# 1. Filtro Tipo de Producto (Macro Filtro)
-tipos_producto = ['Todos'] + sorted(df['Tipo de Producto'].unique().tolist())
+# Iniciamos el subconjunto de datos con todo el DataFrame
+df_curr = df.copy()
+
+# 1. Tipo de Producto
+tipos_producto = ['Todos'] + sorted(df_curr['Tipo de Producto'].unique().tolist())
 tipo_sel = st.sidebar.selectbox("Tipo de Producto", tipos_producto)
 
-df_filtered = df if tipo_sel == 'Todos' else df[df['Tipo de Producto'] == tipo_sel]
+if tipo_sel != 'Todos':
+    df_curr = df_curr[df_curr['Tipo de Producto'] == tipo_sel]
 
-# 2. Filtro Marca
-marcas = ['Todas'] + sorted(df_filtered['Marca'].dropna().unique().tolist())
+# 2. Marca (solo muestra las marcas del Tipo de Producto seleccionado)
+marcas = ['Todas'] + sorted(df_curr['Marca'].dropna().unique().tolist())
 marca_sel = st.sidebar.selectbox("Marca", marcas)
 
 if marca_sel != 'Todas':
-    df_filtered = df_filtered[df_filtered['Marca'] == marca_sel]
+    df_curr = df_curr[df_curr['Marca'] == marca_sel]
 
-# 3. Filtro Categoría Madre
-cats = ['Todas'] + sorted(df_filtered['Cat. madre'].dropna().unique().tolist())
+# 3. Categoría Madre (consecuente con los filtros anteriores)
+cats = ['Todas'] + sorted(df_curr['Cat. madre'].dropna().unique().tolist())
 cat_sel = st.sidebar.selectbox("Categoría Madre", cats)
 
 if cat_sel != 'Todas':
-    df_filtered = df_filtered[df_filtered['Cat. madre'] == cat_sel]
+    df_curr = df_curr[df_curr['Cat. madre'] == cat_sel]
 
-# 4. Filtro Line Focus
-lines = ['Todas'] + sorted(df_filtered['Line Focus'].dropna().unique().tolist())
+# 4. Line Focus (consecuente)
+lines = ['Todas'] + sorted(df_curr['Line Focus'].dropna().unique().tolist())
 line_sel = st.sidebar.selectbox("Línea (Line Focus)", lines)
 
 if line_sel != 'Todas':
-    df_filtered = df_filtered[df_filtered['Line Focus'] == line_sel]
+    df_curr = df_curr[df_curr['Line Focus'] == line_sel]
 
-# 5. Filtro por Segmento
-segmentos = ['Todos'] + sorted(df_filtered['Segmento'].dropna().unique().tolist())
+# 5. Segmento (consecuente)
+segmentos = ['Todos'] + sorted(df_curr['Segmento'].dropna().unique().tolist())
 seg_sel = st.sidebar.selectbox("Segmento", segmentos)
 
 if seg_sel != 'Todos':
-    df_filtered = df_filtered[df_filtered['Segmento'] == seg_sel]
+    df_curr = df_curr[df_curr['Segmento'] == seg_sel]
 
 # 6. Filtro de Stock
 solo_stock = st.sidebar.checkbox("Mostrar solo con Stock disponible (>0)")
 if solo_stock:
-    df_filtered = df_filtered[df_filtered['Stock'] > 0]
+    df_curr = df_curr[df_curr['Stock'] > 0]
 
-# --- FILTROS POR CARACTERÍSTICAS TÉCNICAS Y DESCRIPCIÓN ---
+# --- FILTROS POR CARACTERÍSTICAS TÉCNICAS (SOLO MUESTRA TAGS RELEVANTES) ---
 st.sidebar.markdown("---")
 st.sidebar.header("🛠️ Características Técnicas")
 
-tecnologias_frecuentes = {
+# Diccionario maestro de palabras clave
+diccionario_tags = {
     "Resolución / Calidad": ["1080P", "2MP", "4MP", "5MP", "8MP", "4K", "HD"],
-    "Funciones / IA": ["AcuSense", "ColorVu", "DarkFighter", "WDR", "Microphone", "Audio", "Built-in MIC", "Deep learning", "Human/Vehicle classification", "Face Recognition", "GPS", "Wi-Fi", "4G", "PoE", "BSD", "ADAS"],
+    "Funciones / Red / IA": ["PoE", "Gigabit", "SFP", "AcuSense", "ColorVu", "DarkFighter", "WDR", "Microphone", "Audio", "Built-in MIC", "Deep learning", "Human/Vehicle classification", "Face Recognition", "GPS", "Wi-Fi", "4G", "BSD", "ADAS"],
     "Protección / Construcción": ["IP67", "IK10", "Water resistant", "Vandal", "Metal"],
     "Compresión / Visión": ["H.265+", "H.264", "EXIR", "Hybrid light", "Smart Light", "Dual Light"]
 }
 
-for cat_tech, tags in tecnologias_frecuentes.items():
-    seleccionados = st.sidebar.multiselect(f"{cat_tech}:", tags)
-    for kw in seleccionados:
-        df_filtered = df_filtered[
-            df_filtered['Descripción'].astype(str).str.contains(kw, case=False, na=False) |
-            df_filtered['Modelo'].astype(str).str.contains(kw, case=False, na=False)
-        ]
+# Unimos todo el texto actual para verificar qué palabras realmente existen en este subconjunto
+texto_acumulado = (
+    df_curr['Descripción'].astype(str).str.cat(sep=" ") + " " +
+    df_curr['Modelo'].astype(str).str.cat(sep=" ")
+).lower()
 
+# Filtrar cada categoría para conservar SOLO los tags que existen en los productos filtrados
+for cat_tech, tags in diccionario_tags.items():
+    tags_validos = [tag for tag in tags if tag.lower() in texto_acumulado]
+    if tags_validos:
+        seleccionados = st.sidebar.multiselect(f"{cat_tech}:", tags_validos, key=f"multi_{cat_tech}")
+        for kw in seleccionados:
+            df_curr = df_curr[
+                df_curr['Descripción'].astype(str).str.contains(kw, case=False, na=False) |
+                df_curr['Modelo'].astype(str).str.contains(kw, case=False, na=False)
+            ]
+
+# Búsqueda libre por texto
 busqueda_libre = st.sidebar.text_input("O escribe una palabra clave específica:")
 if busqueda_libre:
     mask = (
-        df_filtered['Modelo'].astype(str).str.contains(busqueda_libre, case=False, na=False) |
-        df_filtered['SAP'].astype(str).str.contains(busqueda_libre, case=False, na=False) |
-        df_filtered['Descripción'].astype(str).str.contains(busqueda_libre, case=False, na=False)
+        df_curr['Modelo'].astype(str).str.contains(busqueda_libre, case=False, na=False) |
+        df_curr['SAP'].astype(str).str.contains(busqueda_libre, case=False, na=False) |
+        df_curr['Descripción'].astype(str).str.contains(busqueda_libre, case=False, na=False)
     )
-    df_filtered = df_filtered[mask]
+    df_curr = df_curr[mask]
 
 # --- VISTA PRINCIPAL ---
-st.metric("Productos encontrados", len(df_filtered))
+st.metric("Productos encontrados", len(df_curr))
 
 precios_cols = ['Diamond', 'Black', 'Ruby', 'Platinum', 'Gold Gremio', 'Gold Plus', 'Gold Prime', 'MAP ARS', 'MAP Web']
 cols_a_mostrar = ['SAP', 'Modelo', 'Marca', 'Tipo de Producto', 'Cat. madre', 'Line Focus', 'Segmento', 'Status', 'Stock'] + precios_cols + ['Descripción']
-cols_existentes = [c for c in cols_a_mostrar if c in df_filtered.columns]
+cols_existentes = [c for c in cols_a_mostrar if c in df_curr.columns]
 
 st.dataframe(
-    df_filtered[cols_existentes],
+    df_curr[cols_existentes],
     use_container_width=True,
     height=500
 )
 
-# --- FUNCIÓN PARA GENERAR EXCEL CON DISEÑO PROFESIONAL ---
+# --- GENERAR EXCEL CON DISEÑO PROFESIONAL ---
 def generar_excel_estetico(dataframe):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -180,7 +195,7 @@ def generar_excel_estetico(dataframe):
     wb.save(output)
     return output.getvalue()
 
-excel_data = generar_excel_estetico(df_filtered)
+excel_data = generar_excel_estetico(df_curr)
 
 st.download_button(
     label="📊 Descargar Excel Presentación (.xlsx)",
