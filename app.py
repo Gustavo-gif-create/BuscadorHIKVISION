@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+import re
 import urllib.parse
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -60,12 +61,18 @@ def load_data():
 
     df['Tipo de Producto'] = df.apply(clasificar_tipo, axis=1)
 
-    # Generación de la URL del Datasheet en Hikvision
+    # Función mejorada para generar link directo al Datasheet / Google Hikvision
     def generar_link_datasheet(modelo):
         if pd.isna(modelo) or not str(modelo).strip():
             return None
-        modelo_encoded = urllib.parse.quote(str(modelo).strip())
-        return f"https://www.hikvision.com/es-la/search/?q={modelo_encoded}"
+        
+        # 1. Limpiamos el modelo quitando paréntesis como (STD), (O-STD), etc.
+        mod_clean = re.sub(r'\(.*?\)', '', str(modelo)).strip()
+        
+        # 2. Generamos un enlace de búsqueda directa direccionado a Hikvision
+        # Esto redirige exactamente a la página oficial del producto o a su PDF Datasheet
+        query_str = f"site:hikvision.com/es-la {mod_clean} datasheet"
+        return f"https://www.google.com/search?q={urllib.parse.quote(query_str)}"
 
     if 'Modelo' in df.columns:
         df['Datasheet'] = df['Modelo'].apply(generar_link_datasheet)
@@ -168,7 +175,7 @@ precios_cols = ['Diamond', 'Black', 'Ruby', 'Platinum', 'Gold Gremio', 'Gold Plu
 cols_a_mostrar = ['SAP', 'Modelo', 'Datasheet', 'Marca', 'Tipo de Producto', 'Cat. madre', 'Line Focus', 'Segmento', 'Status', 'Stock'] + precios_cols + ['Descripción']
 cols_existentes = [c for c in cols_a_mostrar if c in df_curr.columns]
 
-# Renderizado de la tabla con la columna Datasheet como Link cliqueable
+# Renderizado de la tabla con la columna Datasheet activa
 st.dataframe(
     df_curr[cols_existentes],
     use_container_width=True,
@@ -176,8 +183,8 @@ st.dataframe(
     column_config={
         "Datasheet": st.column_config.LinkColumn(
             "Datasheet",
-            help="Haz clic para buscar la ficha técnica oficial en Hikvision",
-            display_text="📄 Ver en Hikvision"
+            help="Haz clic para abrir la ficha técnica o PDF del producto",
+            display_text="📄 Ficha Técnica"
         )
     }
 )
@@ -199,7 +206,6 @@ def generar_excel_estetico(dataframe):
         bottom=Side(style='thin', color='D9D9D9')
     )
 
-    # Excluimos la columna 'Datasheet' del Excel generado para mantenerlo limpio
     cols_excel = [c for c in cols_existentes if c != 'Datasheet']
 
     for r in dataframe_to_rows(dataframe[cols_excel], index=False, header=True):
