@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+import urllib.parse
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils.dataframe import dataframe_to_rows
@@ -14,19 +15,17 @@ EXCEL_FILE = 'Hikvision_Pricelist_DIAMOND_2026-10-01.xlsx'
 # Carga y preparación de datos desde Excel
 @st.cache_data
 def load_data():
-    # Lee directamente la primera hoja del archivo Excel
     df = pd.read_excel(EXCEL_FILE)
     
-    # Limpieza de nombres de columnas (quita espacios extra al inicio o final)
+    # Limpieza de nombres de columnas
     df.columns = df.columns.str.strip()
     
-    # Asegurar que Stock sea numérico
     if 'Stock' in df.columns:
         df['Stock'] = pd.to_numeric(df['Stock'], errors='coerce').fillna(0)
     else:
         df['Stock'] = 0
 
-    # Clasificación precisa por Macro Tipo de Producto
+    # Clasificación por Macro Tipo de Producto
     def clasificar_tipo(row):
         cat = str(row.get('Cat. madre', '')).upper()
         line = str(row.get('Line Focus', '')).upper()
@@ -60,12 +59,25 @@ def load_data():
             return 'Otros / Varios'
 
     df['Tipo de Producto'] = df.apply(clasificar_tipo, axis=1)
+
+    # Generación de la URL del Datasheet en Hikvision
+    def generar_link_datasheet(modelo):
+        if pd.isna(modelo) or not str(modelo).strip():
+            return None
+        modelo_encoded = urllib.parse.quote(str(modelo).strip())
+        return f"https://www.hikvision.com/es-la/search/?q={modelo_encoded}"
+
+    if 'Modelo' in df.columns:
+        df['Datasheet'] = df['Modelo'].apply(generar_link_datasheet)
+    else:
+        df['Datasheet'] = None
+
     return df
 
 try:
     df = load_data()
 except Exception as e:
-    st.error(f"No se pudo cargar el archivo '{EXCEL_FILE}'. Asegúrate de haberlo subido al repositorio en GitHub.")
+    st.error(f"No se pudo cargar el archivo '{EXCEL_FILE}'. Asegúrate de haberlo subido a GitHub.")
     st.stop()
 
 st.title("🔍 Buscador y Selector Comercial Hikvision")
@@ -153,13 +165,21 @@ if busqueda_libre:
 st.metric("Productos encontrados", len(df_curr))
 
 precios_cols = ['Diamond', 'Black', 'Ruby', 'Platinum', 'Gold Gremio', 'Gold Plus', 'Gold Prime', 'MAP ARS', 'MAP Web']
-cols_a_mostrar = ['SAP', 'Modelo', 'Marca', 'Tipo de Producto', 'Cat. madre', 'Line Focus', 'Segmento', 'Status', 'Stock'] + precios_cols + ['Descripción']
+cols_a_mostrar = ['SAP', 'Modelo', 'Datasheet', 'Marca', 'Tipo de Producto', 'Cat. madre', 'Line Focus', 'Segmento', 'Status', 'Stock'] + precios_cols + ['Descripción']
 cols_existentes = [c for c in cols_a_mostrar if c in df_curr.columns]
 
+# Renderizado de la tabla con la columna Datasheet como Link cliqueable
 st.dataframe(
     df_curr[cols_existentes],
     use_container_width=True,
-    height=500
+    height=500,
+    column_config={
+        "Datasheet": st.column_config.LinkColumn(
+            "Datasheet",
+            help="Haz clic para buscar la ficha técnica oficial en Hikvision",
+            display_text="📄 Ver en Hikvision"
+        )
+    }
 )
 
 # --- GENERAR EXCEL PRESENTACIÓN ---
@@ -179,7 +199,10 @@ def generar_excel_estetico(dataframe):
         bottom=Side(style='thin', color='D9D9D9')
     )
 
-    for r in dataframe_to_rows(dataframe[cols_existentes], index=False, header=True):
+    # Excluimos la columna 'Datasheet' del Excel generado para mantenerlo limpio
+    cols_excel = [c for c in cols_existentes if c != 'Datasheet']
+
+    for r in dataframe_to_rows(dataframe[cols_excel], index=False, header=True):
         ws.append(r)
 
     for cell in ws[1]:
